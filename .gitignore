@@ -1,3 +1,9 @@
+# Cache
+.cache
+
+# Vim
+**/*.swp
+
 # Prerequisites
 *.d
 

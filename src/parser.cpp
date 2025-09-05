@@ -15,7 +15,7 @@ std::optional<Command> Parser::parse(const std::string& input) {
 
   Command cmd;
   cmd.name = tokens[0];
-  for (char &c : cmd.name) {
+  for (char& c : cmd.name) {
     c = toupper(c);
   }
 
