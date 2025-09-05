@@ -3,6 +3,7 @@
 
 #include "parser.hpp"
 #include "storage.hpp"
+#include "snapshotter.hpp"
 
 class CommandHandler {
 public:
@@ -12,6 +13,7 @@ public:
 
 private:
   std::shared_ptr<Storage> storage_;
+  std::unique_ptr<Snapshotter> snapshotter_;
 };
 
 #endif
