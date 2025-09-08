@@ -7,7 +7,7 @@
 Snapshotter::Snapshotter(std::shared_ptr<Storage> storage)
     : storage_(storage) {}
 
-bool Snapshotter::save(const std::string& filename, SnapshotFormat format) {
+bool Snapshotter::save(const std::string &filename, SnapshotFormat format) {
   if (format != SnapshotFormat::CUSTOM) {
     return false;
   }
@@ -18,14 +18,15 @@ bool Snapshotter::save(const std::string& filename, SnapshotFormat format) {
     return false;
   }
 
-  auto writer = [&](const std::string& key, const std::string& value) {
-    if (!outfile) return;
+  auto writer = [&](const std::string &key, const std::string &value) {
+    if (!outfile)
+      return;
 
     uint32_t key_len = key.length();
     uint32_t value_len = value.length();
-    outfile.write(reinterpret_cast<const char*>(&key_len), sizeof(uint32_t));
+    outfile.write(reinterpret_cast<const char *>(&key_len), sizeof(uint32_t));
     outfile.write(key.c_str(), key.length());
-    outfile.write(reinterpret_cast<const char*>(&value_len), sizeof(uint32_t));
+    outfile.write(reinterpret_cast<const char *>(&value_len), sizeof(uint32_t));
     outfile.write(value.c_str(), value.length());
   };
   storage_->visitAll(writer);
@@ -39,7 +40,7 @@ bool Snapshotter::save(const std::string& filename, SnapshotFormat format) {
   return true;
 }
 
-bool Snapshotter::load(const std::string& filename, SnapshotFormat format) {
+bool Snapshotter::load(const std::string &filename, SnapshotFormat format) {
   if (format != SnapshotFormat::CUSTOM) {
     return false;
   }
@@ -53,7 +54,7 @@ bool Snapshotter::load(const std::string& filename, SnapshotFormat format) {
 
   std::vector<std::string> raw_kvpairs;
   uint32_t str_len;
-  while (infile.read(reinterpret_cast<char*>(&str_len), sizeof(uint32_t))) {
+  while (infile.read(reinterpret_cast<char *>(&str_len), sizeof(uint32_t))) {
     std::string str(str_len, '\0');
     if (infile.read(&str[0], str_len)) {
       raw_kvpairs.push_back(str);
