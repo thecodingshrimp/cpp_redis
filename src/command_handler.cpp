@@ -1,3 +1,7 @@
+#include <unistd.h>
+
+#include <iostream>
+
 #include "command_handler.hpp"
 #include "snapshotter.hpp"
 
@@ -6,7 +10,7 @@ CommandHandler::CommandHandler(std::shared_ptr<Storage> storage)
   snapshotter_ = std::make_unique<Snapshotter>(storage);
 };
 
-std::string CommandHandler::handle(const Command& cmd) {
+std::string CommandHandler::handle(const Command &cmd) {
   if (cmd.name == "SET") {
     if (cmd.args.size() != 2) {
       return "ERROR: wrong number of arguments for SET command\n";
@@ -44,13 +48,17 @@ std::string CommandHandler::handle(const Command& cmd) {
     }
     SnapshotFormat format = it->second;
 
-    // TODO fork process
-    auto value = snapshotter_->save(cmd.args[0], format);
-    if (value) {
-      return "OK\n";
+    auto pid = fork();
+    if (pid == -1) {
+      std::cerr << "ERROR: forking didn't work" << std::endl;
+      return "ERROR: INTERNAL_SERVER_ERROR";
+    } else if (pid == 0) {
+      auto value = snapshotter_->save(cmd.args[0], format);
+      std::cout << "CHILD PROCESS: OK" << std::endl;
+      exit(0);
     }
 
-    return "-1\n";
+    return "OK\n";
   } else if (cmd.name == "LOAD") {
     if (cmd.args.size() != 2) {
       return "ERROR: wrong number of arguments for LOAD command\n";
