@@ -1,7 +1,5 @@
 #include <unistd.h>
 
-#include <iostream>
-
 #include "command_handler.hpp"
 #include "snapshotter.hpp"
 
@@ -48,16 +46,11 @@ std::string CommandHandler::handle(const Command &cmd) {
     }
     SnapshotFormat format = it->second;
 
-    auto pid = fork();
-    if (pid == -1) {
-      std::cerr << "ERROR: forking didn't work" << std::endl;
-      return "ERROR: INTERNAL_SERVER_ERROR";
-    } else if (pid == 0) {
-      auto value = snapshotter_->save(cmd.args[0], format);
-      std::cout << "CHILD PROCESS: OK" << std::endl;
-      exit(0);
-    }
+    auto value = snapshotter_->save(cmd.args[0], format);
 
+    if (!value) {
+      return "-1\n";
+    }
     return "OK\n";
   } else if (cmd.name == "LOAD") {
     if (cmd.args.size() != 2) {
