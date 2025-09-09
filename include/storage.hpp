@@ -8,22 +8,26 @@
 #include <unordered_map>
 
 class Storage {
- public:
+public:
   Storage() = default;
 
-  void set(const std::string& key, const std::string& value);
+  void set(const std::string &key, const std::string &value);
 
-  std::optional<std::string> get(const std::string& key);
+  std::optional<std::string> get(const std::string &key);
 
-  bool del(const std::string& key);
+  bool del(const std::string &key);
+
+  void lock_mutex();
+
+  void unlock_mutex();
 
   using KVPairVisitor =
-      std::function<void(const std::string&, const std::string&)>;
-  void visitAll(const KVPairVisitor& visitor) const;
+      std::function<void(const std::string &, const std::string &)>;
+  void visitAll(const KVPairVisitor &visitor);
 
-  void setPairs(const std::vector<std::string>& raw_kvpairs);
+  bool setKVStore(const std::unordered_map<std::string, std::string> &kv_store);
 
- private:
+private:
   std::unordered_map<std::string, std::string> kvstore_;
   std::mutex mutex_;
 };

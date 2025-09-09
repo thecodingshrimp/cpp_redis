@@ -1,6 +1,13 @@
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <string>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <unordered_map>
+#include <utility>
 
 #include "snapshotter.hpp"
 
@@ -12,32 +19,51 @@ bool Snapshotter::save(const std::string &filename, SnapshotFormat format) {
     return false;
   }
 
-  std::ofstream outfile(filename, std::ofstream::binary);
-  if (!outfile.is_open()) {
-    std::cerr << "Failed to open file for writing: " << filename << std::endl;
+  storage_->lock_mutex();
+
+  auto pid = fork();
+  if (pid < 0) {
+    std::cerr << "ERROR: forking did not work" << std::endl;
     return false;
+  } else if (pid == 0) {
+    std::cout << "CHILD_PROCESS: starting..." << std::endl;
+    std::ofstream outfile(filename, std::ofstream::binary);
+    std::cout << filename << std::endl;
+    if (!outfile.is_open()) {
+      std::cerr << "Failed to open file for writing: " << filename << std::endl;
+      _exit(EXIT_FAILURE);
+    }
+
+    auto writer = [&](const std::string &key, const std::string &value) {
+      if (!outfile) {
+        std::cout << "CHILD_PROCESS: ERROR: file not open" << std::endl;
+        _exit(EXIT_FAILURE);
+      }
+
+      uint32_t key_len = key.length();
+      uint32_t value_len = value.length();
+      outfile.write(reinterpret_cast<const char *>(&key_len), sizeof(uint32_t));
+      outfile.write(key.c_str(), key.length());
+      outfile.write(reinterpret_cast<const char *>(&value_len),
+                    sizeof(uint32_t));
+      outfile.write(value.c_str(), value.length());
+    };
+    storage_->visitAll(writer);
+    outfile.close();
+    _exit(EXIT_SUCCESS);
   }
 
-  auto writer = [&](const std::string &key, const std::string &value) {
-    if (!outfile)
-      return;
+  storage_->unlock_mutex();
 
-    uint32_t key_len = key.length();
-    uint32_t value_len = value.length();
-    outfile.write(reinterpret_cast<const char *>(&key_len), sizeof(uint32_t));
-    outfile.write(key.c_str(), key.length());
-    outfile.write(reinterpret_cast<const char *>(&value_len), sizeof(uint32_t));
-    outfile.write(value.c_str(), value.length());
-  };
-  storage_->visitAll(writer);
+  int status;
+  waitpid(pid, &status, 0);
 
-  if (!outfile) {
-    std::cerr << "ERROR: could not write everything to file: " << filename
-              << std::endl;
-    return false;
+  if (WIFEXITED(status)) {
+    std::cout << "child process exited normally." << std::endl;
+    return true;
   }
-  outfile.close();
-  return true;
+  std::cout << "something went wrong" << std::endl;
+  return false;
 }
 
 bool Snapshotter::load(const std::string &filename, SnapshotFormat format) {
@@ -52,18 +78,23 @@ bool Snapshotter::load(const std::string &filename, SnapshotFormat format) {
     return false;
   }
 
-  std::vector<std::string> raw_kvpairs;
+  std::unordered_map<std::string, std::string> new_kvstore;
   uint32_t str_len;
   while (infile.read(reinterpret_cast<char *>(&str_len), sizeof(uint32_t))) {
     std::string str(str_len, '\0');
     if (infile.read(&str[0], str_len)) {
-      raw_kvpairs.push_back(str);
+      if (infile.read(reinterpret_cast<char *>(&str_len), sizeof(uint32_t))) {
+        std::string value(str_len, '\0');
+        new_kvstore.emplace(std::make_pair(str, value));
+      } else {
+        std::cerr << "Error: Unexpected eof or read error." << std::endl;
+        break;
+      }
     } else {
       std::cerr << "Error: Unexpected eof or read error." << std::endl;
       break;
     }
   }
 
-  storage_->setPairs(raw_kvpairs);
-  return true;
+  return storage_->setKVStore(new_kvstore);
 }
