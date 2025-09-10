@@ -1,3 +1,4 @@
+#include <string>
 #include <unistd.h>
 
 #include "command_handler.hpp"
@@ -24,15 +25,39 @@ std::string CommandHandler::handle(const Command &cmd) {
     auto value = storage_->get(cmd.args[0]);
     if (value) {
       return *value + "\n";
-    } else {
-      return "-1\n";
     }
+    return "-1\n";
   } else if (cmd.name == "DEL") {
     if (cmd.args.size() != 1) {
       return "ERROR: wrong number of arguments for DEL command\n";
     }
 
     bool deleted = storage_->del(cmd.args[0]);
+
+    return std::to_string(deleted) + "\n";
+  } else if (cmd.name == "HSET") {
+    if (cmd.args.size() != 3) {
+      return "ERROR: wrong number of arguments for HSET command\n";
+    }
+
+    storage_->hset(cmd.args[0], cmd.args[1], cmd.args[2]);
+    return "OK\n";
+  } else if (cmd.name == "HGET") {
+    if (cmd.args.size() != 2) {
+      return "ERROR: wrong number of arguments for HGET command\n";
+    }
+
+    auto value = storage_->hget(cmd.args[0], cmd.args[1]);
+    if (value) {
+      return *value + "\n";
+    }
+    return "-1\n";
+  } else if (cmd.name == "HDEL") {
+    if (cmd.args.size() != 2) {
+      return "ERROR: wrong number of arguments for HDEL command\n";
+    }
+
+    bool deleted = storage_->hdel(cmd.args[0], cmd.args[1]);
 
     return std::to_string(deleted) + "\n";
   } else if (cmd.name == "SAVE") {

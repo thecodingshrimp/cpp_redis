@@ -10,11 +10,12 @@
 #include <utility>
 
 #include "snapshotter.hpp"
+#include "storage.hpp"
 
 Snapshotter::Snapshotter(std::shared_ptr<Storage> storage)
     : storage_(storage) {}
 
-bool Snapshotter::save(const std::string &filename, SnapshotFormat format) {
+bool Snapshotter::save(const std::string &filename, SnapshotFormat &format) {
   if (format != SnapshotFormat::CUSTOM) {
     return false;
   }
@@ -34,12 +35,14 @@ bool Snapshotter::save(const std::string &filename, SnapshotFormat format) {
       _exit(EXIT_FAILURE);
     }
 
-    auto writer = [&](const std::string &key, const std::string &value) {
+    auto writer = [&](const std::string &key, const CPPRedisValue &value) {
       if (!outfile) {
         std::cout << "CHILD_PROCESS: ERROR: file not open" << std::endl;
         _exit(EXIT_FAILURE);
       }
 
+      // TODO adjust writer so that hashmaps are supported - maybe extend parser
+      // for parsing hmap to file.
       uint32_t key_len = key.length();
       uint32_t value_len = value.length();
       outfile.write(reinterpret_cast<const char *>(&key_len), sizeof(uint32_t));

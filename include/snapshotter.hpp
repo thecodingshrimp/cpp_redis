@@ -11,13 +11,13 @@ static const std::unordered_map<std::string, SnapshotFormat> lookup{
     {"csv", SnapshotFormat::CSV}};
 
 class Snapshotter {
- public:
+public:
   explicit Snapshotter(const std::shared_ptr<Storage> storage);
 
-  bool save(const std::string& filename, SnapshotFormat format);
-  bool load(const std::string& filename, SnapshotFormat format);
+  bool save(const std::string &filename, SnapshotFormat &format);
+  bool load(const std::string &filename, SnapshotFormat &format);
 
- private:
+private:
   std::shared_ptr<Storage> storage_;
 };
 
