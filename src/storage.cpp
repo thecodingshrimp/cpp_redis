@@ -1,28 +1,115 @@
 #include "storage.hpp"
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
-#include <iostream>
 #include <mutex>
+#include <optional>
+#include <string>
 #include <unistd.h>
 #include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
+
+template <typename T> T *Storage::get_if_type(const std::string &key) {
+  auto it = kvstore_.find(key);
+  if (it != kvstore_.end()) {
+    return std::get_if<T>(&it->second);
+  }
+  return nullptr;
+}
+
+uint32_t Storage::size() { return kvstore_.size(); }
+
+void Storage::hset(const std::string &key, const std::string &field,
+                   const std::string &value) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (auto *map =
+          get_if_type<std::unordered_map<std::string, std::string>>(key)) {
+    (*map)[field] = value;
+    return;
+  }
+  kvstore_[key] = std::unordered_map<std::string, std::string>{{field, value}};
+}
+
+void Storage::ladd(const std::string &key, const std::string &value) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (auto *list = get_if_type<std::vector<std::string>>(key)) {
+    list->push_back(std::move(value));
+    return;
+  }
+  kvstore_[key] = std::vector<std::string>{value};
+}
 
 void Storage::set(const std::string &key, const std::string &value) {
   std::lock_guard<std::mutex> lock(mutex_);
-  // TODO what if the key is already set?
-  kvstore_[key] = value;
+  if (get_if_type<std::string>(key) || kvstore_.find(key) == kvstore_.end()) {
+    kvstore_[key] = value;
+  }
+}
+
+std::optional<std::string> Storage::hget(const std::string &key,
+                                         const std::string &field) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (auto *map =
+          get_if_type<std::unordered_map<std::string, std::string>>(key)) {
+    return (*map)[field];
+  };
+
+  return std::nullopt;
+}
+
+std::optional<std::string> Storage::lget(const std::string &key,
+                                         const int &idx) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (auto *list = get_if_type<std::vector<std::string>>(key)) {
+    if (idx >= list->size()) {
+      return std::nullopt;
+    }
+    return (*list)[idx];
+  };
+
+  return std::nullopt;
 }
 
 std::optional<std::string> Storage::get(const std::string &key) {
   std::lock_guard<std::mutex> lock(mutex_);
-  auto it = kvstore_.find(key);
-  if (it != kvstore_.end()) {
-    return it->second;
-  }
+  if (auto *ptr = get_if_type<std::string>(key)) {
+    return *ptr;
+  };
+
   return std::nullopt;
 }
 
 void Storage::lock_mutex() { mutex_.lock(); }
 
 void Storage::unlock_mutex() { mutex_.unlock(); }
+
+bool Storage::ldel(const std::string &key, const int &idx) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (auto *list = get_if_type<std::vector<std::string>>(key)) {
+    if (idx >= list->size()) {
+      return false;
+    }
+    list->erase(list->begin() + idx);
+    return true;
+  };
+
+  return false;
+}
+
+bool Storage::hdel(const std::string &key, const std::string &field) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (auto map =
+          get_if_type<std::unordered_map<std::string, std::string>>(key)) {
+    auto field_it = map->find(field);
+    if (field_it != map->end()) {
+      return map->erase(field);
+    }
+  };
+
+  return false;
+}
 
 bool Storage::del(const std::string &key) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -31,14 +118,13 @@ bool Storage::del(const std::string &key) {
 
 // CAUTION: not thread safe.
 void Storage::visitAll(const KVPairVisitor &visitor) {
-  std::cout << "at least here" << std::endl;
   for (const auto &pair : kvstore_) {
     visitor(pair.first, pair.second);
   }
 }
 
 bool Storage::setKVStore(
-    const std::unordered_map<std::string, std::string> &kv_store) {
+    const std::unordered_map<std::string, CPPRedisValue> &kv_store) {
   std::lock_guard<std::mutex> lock(mutex_);
   kvstore_ = kv_store;
   return true;
