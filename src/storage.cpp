@@ -24,13 +24,12 @@ uint32_t Storage::size() { return kvstore_.size(); }
 void Storage::hset(const std::string &key, const std::string &field,
                    const std::string &value) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (auto map =
+  if (auto *map =
           get_if_type<std::unordered_map<std::string, std::string>>(key)) {
-    map->emplace(std::move(field), std::move(value));
+    (*map)[field] = value;
     return;
   }
-  std::unordered_map<std::string, std::string> new_hmap = {{field, value}};
-  kvstore_.emplace(std::move(key), std::move(new_hmap));
+  kvstore_[key] = std::unordered_map<std::string, std::string>{{field, value}};
 }
 
 void Storage::ladd(const std::string &key, const std::string &value) {
@@ -39,14 +38,13 @@ void Storage::ladd(const std::string &key, const std::string &value) {
     list->push_back(std::move(value));
     return;
   }
-  std::vector<std::string> list = {value};
-  kvstore_.emplace(std::move(key), std::move(list));
+  kvstore_[key] = std::vector<std::string>{value};
 }
 
 void Storage::set(const std::string &key, const std::string &value) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (get_if_type<std::string>(key) || kvstore_.find(key) == kvstore_.end()) {
-    kvstore_.emplace(std::move(key), std::move(value));
+    kvstore_[key] = value;
   }
 }
 
@@ -55,10 +53,7 @@ std::optional<std::string> Storage::hget(const std::string &key,
   std::lock_guard<std::mutex> lock(mutex_);
   if (auto *map =
           get_if_type<std::unordered_map<std::string, std::string>>(key)) {
-    auto field_it = map->find(field);
-    if (field_it != map->end()) {
-      return field_it->second;
-    }
+    return (*map)[field];
   };
 
   return std::nullopt;
@@ -71,7 +66,7 @@ std::optional<std::string> Storage::lget(const std::string &key,
     if (idx >= list->size()) {
       return std::nullopt;
     }
-    return list->at(idx);
+    return (*list)[idx];
   };
 
   return std::nullopt;
@@ -79,7 +74,6 @@ std::optional<std::string> Storage::lget(const std::string &key,
 
 std::optional<std::string> Storage::get(const std::string &key) {
   std::lock_guard<std::mutex> lock(mutex_);
-  // TODO return whole list/hashmap
   if (auto *ptr = get_if_type<std::string>(key)) {
     return *ptr;
   };

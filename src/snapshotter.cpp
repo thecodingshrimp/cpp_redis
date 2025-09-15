@@ -91,7 +91,7 @@ bool Snapshotter::save(const std::string &filename, SnapshotFormat &format) {
       } else if (const auto &str = std::get_if<std::string>(&value)) {
         write_uint8(outfile, MAP);
         write_string(outfile, key);
-        write_string(outfile, str->c_str());
+        write_string(outfile, *str);
       } else if (const auto vec =
                      std::get_if<std::vector<std::string>>(&value)) {
         write_uint8(outfile, LIST);
