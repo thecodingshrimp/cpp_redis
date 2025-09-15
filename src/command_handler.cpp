@@ -1,3 +1,6 @@
+#include <cstddef>
+#include <cstdlib>
+#include <optional>
 #include <string>
 #include <unistd.h>
 
@@ -58,6 +61,35 @@ std::string CommandHandler::handle(const Command &cmd) {
     }
 
     bool deleted = storage_->hdel(cmd.args[0], cmd.args[1]);
+
+    return std::to_string(deleted) + "\n";
+  } else if (cmd.name == "LADD") {
+    if (cmd.args.size() != 2) {
+      return "ERROR: wrong number of arguments for LADD command\n";
+    }
+
+    storage_->ladd(cmd.args[0], cmd.args[1]);
+
+    return "OK\n";
+  } else if (cmd.name == "LGET") {
+    if (cmd.args.size() != 2) {
+      return "ERROR: wrong number of arguments for LGET command\n";
+    }
+
+    auto value = storage_->lget(cmd.args[0],
+                                std::strtoul(cmd.args[1].c_str(), nullptr, 10));
+
+    if (value) {
+      return *value + "\n";
+    }
+    return "-1\n";
+  } else if (cmd.name == "LDEL") {
+    if (cmd.args.size() != 2) {
+      return "ERROR: wrong number of arguments for LDEL command\n";
+    }
+
+    bool deleted = storage_->ldel(
+        cmd.args[0], std::strtoul(cmd.args[1].c_str(), nullptr, 10));
 
     return std::to_string(deleted) + "\n";
   } else if (cmd.name == "SAVE") {
