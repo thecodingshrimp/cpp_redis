@@ -3,7 +3,6 @@
 
 #include <cstdint>
 #include <functional>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -32,9 +31,6 @@ public:
   bool ldel(const std::string &key, const int &idx);
   bool del(const std::string &key);
 
-  void lock_mutex();
-  void unlock_mutex();
-
   using KVPairVisitor =
       std::function<void(const std::string &, const CPPRedisValue &)>;
   void visitAll(const KVPairVisitor &visitor);
@@ -44,7 +40,6 @@ public:
 
 private:
   std::unordered_map<std::string, CPPRedisValue> kvstore_;
-  std::mutex mutex_;
 
   template <typename T> T *get_if_type(const std::string &key);
 };
