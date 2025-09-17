@@ -57,16 +57,13 @@ bool Snapshotter::save(const std::string &filename, SnapshotFormat &format) {
     return false;
   }
 
-  storage_->lock_mutex();
-
   auto pid = fork();
   if (pid < 0) {
     std::cerr << "ERROR: forking did not work" << std::endl;
     return false;
   } else if (pid == 0) {
-    std::cout << "CHILD_PROCESS: starting..." << std::endl;
+    std::cout << "Saving kvstore state..." << std::endl;
     std::ofstream outfile(filename, std::ofstream::binary);
-    std::cout << filename << std::endl;
     if (!outfile.is_open()) {
       std::cerr << "Failed to open file for writing: " << filename << std::endl;
       _exit(EXIT_FAILURE);
@@ -111,17 +108,7 @@ bool Snapshotter::save(const std::string &filename, SnapshotFormat &format) {
     _exit(EXIT_SUCCESS);
   }
 
-  storage_->unlock_mutex();
-
-  int status;
-  waitpid(pid, &status, 0);
-
-  if (WIFEXITED(status)) {
-    std::cout << "child process exited normally." << std::endl;
-    return true;
-  }
-  std::cout << "something went wrong" << std::endl;
-  return false;
+  return true;
 }
 
 bool Snapshotter::load(const std::string &filename, SnapshotFormat &format) {

@@ -1,10 +1,13 @@
 #ifndef SERVER_HPP
 #define SERVER_HPP
 
-#include "storage.hpp"
 #include "command_handler.hpp"
 #include "parser.hpp"
+#include "storage.hpp"
+#include <cstdint>
 
+static const uint16_t EVENT_AMOUNT = 256;
+static const uint16_t USER_AMOUNT = 256;
 class DatabaseServer {
 public:
   explicit DatabaseServer(int port);
