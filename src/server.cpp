@@ -215,7 +215,7 @@ void DatabaseServer::handle_client_write(int client_socket) {
     EV_SET(&event, client_socket, EVFILT_WRITE, EV_DISABLE, 0, 0, NULL);
     if (kevent(kq_, &event, 1, NULL, 0, NULL) < 0) {
       std::cerr << "disable kevent write" << std::endl;
-      return;
+      conn_delete(client_socket);
     }
   }
 }
