@@ -1,6 +1,7 @@
 #include "server.hpp"
 #include "storage.hpp"
 
+#include <cerrno>
 #include <cstddef>
 #include <cstdio>
 #include <fcntl.h>
@@ -78,7 +79,7 @@ void DatabaseServer::run() {
 
   int server_fd =
       socket(address->ai_family, address->ai_socktype, address->ai_protocol);
-  // todo might need to use fcntl to make server_fd non-blocking.
+  // use fcntl to make server_fd non-blocking.
   set_non_blocking(server_fd);
   if (server_fd == -1) {
     std::cerr << "Failed to create socket" << std::endl;
@@ -96,21 +97,20 @@ void DatabaseServer::run() {
     close(server_fd);
     return;
   }
-
-  std::cout << "DatabaseServer listening on port " << port_ << std::endl;
+  std::cout << "Server listening on port " << port_ << std::endl;
 
   struct kevent event;
   struct kevent tevent[EVENT_AMOUNT];
-  int kq, nev;
+  int nev;
 
-  kq = kqueue();
-  if (kq < 0) {
+  kq_ = kqueue();
+  if (kq_ < 0) {
     std::cerr << "kqueue() failed" << std::endl;
     return;
   }
 
   EV_SET(&event, server_fd, EVFILT_READ, EV_ADD, 0, 0, NULL);
-  if (kevent(kq, &event, 1, NULL, 0, NULL) < 0) {
+  if (kevent(kq_, &event, 1, NULL, 0, NULL) < 0) {
     std::cerr << "kevent failed" << std::endl;
     return;
   }
@@ -119,7 +119,7 @@ void DatabaseServer::run() {
   sockaddr_storage addr;
   socklen_t socklen = sizeof(addr);
   while (true) {
-    nev = kevent(kq, NULL, 0, tevent, EVENT_AMOUNT, NULL);
+    nev = kevent(kq_, NULL, 0, tevent, EVENT_AMOUNT, NULL);
 
     if (nev < 1) {
       std::cerr << "kevent wait failed" << std::endl;
@@ -132,51 +132,98 @@ void DatabaseServer::run() {
       if (tevent[i].flags & EV_ERROR) {
         std::cerr << "event error: " << event.data << std::endl;
         continue;
-      } else if (tevent[i].flags & EV_EOF) {
+      }
+
+      if (tevent[i].flags & EV_EOF) {
         std::cerr << "client " << fd << " disconnected" << std::endl;
-        EV_SET(&event, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
-        if (kevent(kq, &event, 1, NULL, 0, NULL) < 0) {
-          perror("disconnec");
+        struct kevent changelist[2];
+        EV_SET(&changelist[0], fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+        EV_SET(&changelist[1], fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
+        if (kevent(kq_, changelist, 2, NULL, 0, NULL) < 0) {
+          perror("EV_EOF");
         }
         conn_delete(fd);
-      } else if (fd == server_fd) {
+        continue;
+      }
+
+      if (fd == server_fd) {
         // macos does not know accept4, so no O_NONBLOCK OR SOCK_NONBLOCK
         fd = accept(tevent[i].ident, reinterpret_cast<struct sockaddr *>(&addr),
                     &socklen);
         if (fd < 0) {
-          if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            std::cout << "no pending connections in the queue" << std::endl;
-            continue;
-          }
           perror("accept");
           continue;
         }
         // need to set non blocking explicitly.
         set_non_blocking(fd);
         if (conn_add(fd) == 0) {
-          EV_SET(&event, fd, EVFILT_READ, EV_ADD, 0, 0, NULL);
-          if (kevent(kq, &event, 1, NULL, 0, NULL) == -1) {
-            perror("kevent register client");
+          users_[fd].write_buffer = "Welcome\n";
+          struct kevent changelist[2];
+          EV_SET(&changelist[0], fd, EVFILT_READ, EV_ADD, 0, 0, NULL);
+          // enable for the welcome message
+          EV_SET(&changelist[1], fd, EVFILT_WRITE, EV_ADD, 0, 0, NULL);
+          if (kevent(kq_, &changelist[0], 2, NULL, 0, NULL) == -1) {
+            perror("onboard client");
             conn_delete(fd);
-            continue;
           }
-          static const std::string helloworld = "welcome!\n";
-          // todo non-blocking!
-          send(fd, helloworld.c_str(), helloworld.length(), 0);
         } else {
           printf("connection refused\n");
           close(fd);
         }
-      } else if (tevent[i].filter & EVFILT_READ) {
-        handle_client(tevent[i].ident);
+        continue;
+      }
+      if (tevent[i].filter & EVFILT_WRITE) {
+        handle_client_write(tevent[i].ident);
+      }
+      if (tevent[i].filter & EVFILT_READ) {
+        handle_client_read(tevent[i].ident);
       }
     }
   }
 }
 
-void DatabaseServer::handle_client(int client_socket) {
+void DatabaseServer::handle_client_write(int client_socket) {
   auto client = users_.find(client_socket);
   if (client == users_.end()) {
+    perror("find user");
+    return;
+  }
+
+  auto &client_info = client->second;
+
+  auto sent = send(client_socket, client_info.write_buffer.c_str(),
+                   client_info.write_buffer.length(), 0);
+
+  if (sent < 0) {
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      // buffer is full. try again later.
+      return;
+    }
+    perror("send");
+    conn_delete(client_socket);
+    return;
+  }
+
+  if (sent < client_info.write_buffer.length()) {
+    client_info.write_buffer.erase(0, sent);
+  } else {
+    client_info.write_buffer.clear();
+  }
+
+  if (client_info.write_buffer.empty()) {
+    struct kevent event;
+    EV_SET(&event, client_socket, EVFILT_WRITE, EV_DISABLE, 0, 0, NULL);
+    if (kevent(kq_, &event, 1, NULL, 0, NULL) < 0) {
+      std::cerr << "disable kevent write" << std::endl;
+      return;
+    }
+  }
+}
+
+void DatabaseServer::handle_client_read(int client_socket) {
+  auto client = users_.find(client_socket);
+  if (client == users_.end()) {
+    perror("find user");
     return;
   }
   char buffer[1024] = {0};
@@ -195,17 +242,16 @@ void DatabaseServer::handle_client(int client_socket) {
     return;
   }
 
-  // todo write to buffer if command is not complete
-  users_[client_socket].buffer.append(buffer, bytes_read);
+  users_[client_socket].read_buffer.append(buffer, bytes_read);
 
   while (true) {
-    auto pos = users_[client_socket].buffer.find('\n');
+    auto pos = users_[client_socket].read_buffer.find('\n');
     if (pos == std::string::npos) {
       return;
     }
 
-    std::string command = users_[client_socket].buffer.substr(0, pos);
-    users_[client_socket].buffer.erase(0, pos + 1);
+    std::string command = users_[client_socket].read_buffer.substr(0, pos);
+    users_[client_socket].read_buffer.erase(0, pos + 1);
 
     if (command.empty()) {
       continue;
@@ -219,7 +265,12 @@ void DatabaseServer::handle_client(int client_socket) {
       response = "ERROR: invalid command\n";
     }
 
-    // todo MSG_DONTWAIT + EVFILT_WRITE
-    send(client_socket, response.c_str(), response.length(), 0);
+    struct kevent event;
+    users_[client_socket].write_buffer.append(std::move(response));
+    EV_SET(&event, client_socket, EVFILT_WRITE, EV_ENABLE, 0, 0, NULL);
+    if (kevent(kq_, &event, 1, NULL, 0, NULL) < 0) {
+      std::cerr << "kevent write failed" << std::endl;
+      return;
+    }
   }
 }

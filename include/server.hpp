@@ -10,7 +10,8 @@
 struct uc {
   int uc_fd;
   char *uc_addr;
-  std::string buffer;
+  std::string read_buffer;
+  std::string write_buffer;
 };
 
 static const uint16_t EVENT_AMOUNT = 256;
@@ -24,8 +25,9 @@ public:
 private:
   int conn_add(int fd);
   int conn_delete(int fd);
-  void handle_client(int client_socket);
-  int port_;
+  void handle_client_read(int client_socket);
+  void handle_client_write(int client_socket);
+  int port_, kq_;
   std::shared_ptr<Storage> storage_;
   std::unique_ptr<CommandHandler> commandHandler_;
   Parser parser_;
