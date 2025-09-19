@@ -5,6 +5,14 @@
 #include "parser.hpp"
 #include "storage.hpp"
 #include <cstdint>
+#include <unordered_map>
+
+struct uc {
+  int uc_fd;
+  char *uc_addr;
+  std::string read_buffer;
+  std::string write_buffer;
+};
 
 static const uint16_t EVENT_AMOUNT = 256;
 static const uint16_t USER_AMOUNT = 256;
@@ -14,13 +22,16 @@ public:
 
   void run();
 
-  void handle_client(int client_socket);
-
 private:
-  int port_;
+  int conn_add(int fd);
+  int conn_delete(int fd);
+  void handle_client_read(int client_socket);
+  void handle_client_write(int client_socket);
+  int port_, kq_;
   std::shared_ptr<Storage> storage_;
   std::unique_ptr<CommandHandler> commandHandler_;
   Parser parser_;
+  std::unordered_map<int, uc> users_;
 };
 
 #endif
